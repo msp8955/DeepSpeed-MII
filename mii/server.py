@@ -48,12 +48,13 @@ class MIIServer():
 
         self.port_number = mii_configs.port_number
 
+        available_gpu = torch.cuda.device_count()
         if mii_configs.hostfile is None:
-            hostfile = tempfile.NamedTemporaryFile(delete=False)
-            num_gpu = torch.cuda.device_count()
-            with open(hostfile, "w") as f:
-                f.write(f"localhost slots={num_gpu}")
-            mii.configs.hostfile = hostfile
+            gpu_count = 0
+            for replica_config in lb_config.replica_configs:
+                gpu_count += len(replica_config.gpu_indices)
+            if gpu_count > available_gpu:
+                raise ValueError(f"Number of GPUs requested ({gpu_count}) exceeds available GPUs ({available_gpu}) in localhost. Please provide a hostfile for multi-node deployment.")
 
         processes = self._initialize_service(deployment_name,
                                              model_name,
@@ -295,10 +296,13 @@ class MIIServer():
 
         # Start replica instances
         for i, repl_config in enumerate(lb_config.replica_configs):
-            hostfile = tempfile.NamedTemporaryFile(delete=False)
-            hostfile.write(
-                f'{repl_config.hostname} slots={max(host_gpus[repl_config.hostname])+1}\n'
-                .encode())
+            hostfile_name = "/dev/null"
+            if mii_configs.hostfile is not None:
+                hostfile = tempfile.NamedTemporaryFile(delete=False)
+                hostfile.write(
+                    f'{repl_config.hostname} slots={max(host_gpus[repl_config.hostname])+1}\n'
+                    .encode())
+                hostfile_name = hostfile.name
             processes.append(
                 self._launch_deepspeed(
                     deployment_name,
@@ -308,7 +312,7 @@ class MIIServer():
                     ds_zero,
                     ds_config,
                     mii_configs,
-                    hostfile.name,
+                    hostfile_name,
                     repl_config.hostname,
                     repl_config.tensor_parallel_ports[0],
                     mii_configs.torch_dist_port + (100 * i) + repl_config.gpu_indices[0],

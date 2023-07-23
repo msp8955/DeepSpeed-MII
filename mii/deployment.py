@@ -174,10 +174,17 @@ def _deploy_aml(deployment_name, model_name, version):
 
 
 def _allocate_processes(hostfile_path, tensor_parallel, num_replicas):
+    if hostfile_path is None:
+        import tempfile
+        hostfile_path = tempfile.NamedTemporaryFile(delete=False).name
+        num_gpu = torch.cuda.device_count()
+        with open(hostfile_path, "w") as f:
+            f.write(f"localhost slots={num_gpu}")
+
     resource_pool = fetch_hostfile(hostfile_path)
     assert resource_pool is not None and len(
         resource_pool) > 0, f'No hosts found in {hostfile_path}'
-
+    
     replica_pool = []
     allocated_num = 0
     for host, slots in resource_pool.items():

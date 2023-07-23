@@ -7,8 +7,6 @@ from typing import Union, List
 from enum import Enum
 from pydantic import BaseModel, validator, root_validator
 
-from deepspeed.launcher.runner import DLTS_HOSTFILE
-
 
 class DtypeEnum(Enum):
     # The torch dtype must always be the first value (so we return torch.dtype)
@@ -55,7 +53,7 @@ class MIIConfig(BaseModel):
     enable_restful_api: bool = False
     restful_api_port: int = 51080
     replica_num: int = 1
-    hostfile: str = DLTS_HOSTFILE
+    hostfile: str = None
     trust_remote_code: bool = False
 
     @validator("deploy_rank")
