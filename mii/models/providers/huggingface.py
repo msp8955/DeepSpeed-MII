@@ -71,16 +71,17 @@ def _attempt_load(load_fn, model_name, cache_path, kwargs={}):
 def create_checkpoint_dict(model_name, model_path, checkpoint_dict):
     if checkpoint_dict:
         return checkpoint_dict
-    model_path = snapshot_download(
-        model_name,
-        cache_dir=model_path,
-        allow_patterns=[
-            "*.bin",
-            "*.json",
-            "*.pt",
-        ],
-        revision=None,
-    )
+    if not is_aml():
+        model_path = snapshot_download(
+            model_name,
+            cache_dir=model_path,
+            allow_patterns=[
+                "*.bin",
+                "*.json",
+                "*.pt",
+            ],
+            revision=None,
+        )
     if os.path.isfile(os.path.join(model_path, "ds_inference_config.json")):
         with open(os.path.join(model_path, "ds_inference_config.json")) as f:
             data = json.load(f)
@@ -105,20 +106,22 @@ def load_with_meta_tensor(model_config):
 
     cache_path = mii_cache_path()
 
+    model_name_or_path = model_config.model if not is_aml() else model_config.model_path
+
     tokenizer = _attempt_load(
         AutoTokenizer.from_pretrained,
-        model_config.model,
+        model_name_or_path,
         cache_path,
         kwargs={"padding_side": "left"},
     )
     tokenizer.pad_token = tokenizer.eos_token
 
-    config = _attempt_load(AutoConfig.from_pretrained, model_config.model, cache_path)
+    config = _attempt_load(AutoConfig.from_pretrained, model_name_or_path, cache_path)
 
     with OnDevice(dtype=torch.float16, device="meta", enabled=True):
         model = AutoModelForCausalLM.from_config(config, torch_dtype=torch.bfloat16)
     model = model.eval()
-    checkpoint_dict = create_checkpoint_dict(model_config.model,
+    checkpoint_dict = create_checkpoint_dict(model_name_or_path,
                                              model_config.model_path,
                                              model_config.checkpoint_dict)
     torch.distributed.barrier()
